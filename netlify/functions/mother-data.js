@@ -18,26 +18,32 @@ exports.handler = async (event) => {
     const sheet = workbook.Sheets['MOTHER'];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
 
-    // Consultores ativos (REC)
+    // Consultores (TIPO=REC)
     const consultores = rows
       .filter(r => r['TIPO'] === 'REC')
       .map(r => ({
-        nome: r['TN'],
+        nome: r['ENTIDADE'],
         agencia: r['AGENCIA'],
         objetivoFaturacao: r['COMISSAO'],
         dataEntrada: r['DATA PREV'],
       }));
 
-    // Angariações ativas (TN=VO, FASE=c)
+    // Angariações ativas (TIPO=ANG, TN=VO, FASE=c)
     const angariações = rows
-      .filter(r => r['TN'] === 'VO' && r['FASE'] === 'c')
+      .filter(r =>
+        r['TIPO'] === 'ANG' &&
+        r['TN'] === 'VO' &&
+        String(r['FASE']).toLowerCase() === 'c'
+      )
       .map(r => ({
-        consultor: r['AGENCIA'],
+        consultor: r['ENTIDADE'],
+        agencia: r['AGENCIA'],
+        referencia: r['REF'],
         localidade: r['ID'],
+        tipoImovel: r['TENTIDADE'],
         preco: r['VVENDA'],
         comissao: r['COMISSAO'],
         data: r['DATA'],
-        agencia: r['AGENCIA'],
       }));
 
     return {
