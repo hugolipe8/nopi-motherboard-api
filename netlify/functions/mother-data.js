@@ -25,7 +25,7 @@ exports.handler = async (event) => {
   try {
     const response = await fetch(DROPBOX_URL);
     const buffer = await response.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true, cellFormula: false });
+   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
 
     const sheet = workbook.Sheets['MOTHER'];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: true });
