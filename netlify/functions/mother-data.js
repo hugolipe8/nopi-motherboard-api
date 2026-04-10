@@ -13,25 +13,23 @@ exports.handler = async (event) => {
   try {
     const response = await fetch(DROPBOX_URL);
     const buffer = await response.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array' });
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
 
     const sheet = workbook.Sheets['MOTHER'];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false });
 
-    // Consultores (TIPO=REC)
     const consultores = rows
-      .filter(r => r['TIPO'] === 'REC')
+      .filter(r => String(r['TIPO'] ?? '').toUpperCase() === 'REC')
       .map(r => ({
         nome: r['ENTIDADE'],
         agencia: r['AGENCIA'],
-        objetivoFaturacao: r['COMISSAO'],
+        objetivoFaturacao: parseFloat(r['COMISSAO']) || 0,
         dataEntrada: r['DATA PREV'],
       }));
 
-    // Angariações ativas (TN=VO, FASE=c)
     const angariações = rows
       .filter(r =>
-        r['TN'] === 'VO' &&
+        String(r['TN'] ?? '').toUpperCase() === 'VO' &&
         String(r['FASE'] ?? '').toLowerCase() === 'c'
       )
       .map(r => ({
@@ -40,8 +38,8 @@ exports.handler = async (event) => {
         referencia: r['REF'],
         localidade: r['ID'],
         tipoImovel: r['TENTIDADE'],
-        preco: r['VVENDA'],
-        comissao: r['COMISSAO'],
+        preco: parseFloat(r['VVENDA']) || null,
+        comissao: parseFloat(r['COMISSAO']) || null,
         data: r['DATA'],
       }));
 
