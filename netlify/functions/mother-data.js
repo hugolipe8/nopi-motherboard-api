@@ -28,12 +28,11 @@ exports.handler = async (event) => {
         dataEntrada: r['DATA PREV'],
       }));
 
-    // Angariações ativas (TIPO=ANG, TN=VO, FASE=c)
+    // Angariações ativas (TN=VO, FASE=c)
     const angariações = rows
       .filter(r =>
-        r['TIPO'] === 'ANG' &&
         r['TN'] === 'VO' &&
-        String(r['FASE']).toLowerCase() === 'c'
+        String(r['FASE'] ?? '').toLowerCase() === 'c'
       )
       .map(r => ({
         consultor: r['ENTIDADE'],
