@@ -3,10 +3,27 @@ const fetch = require('node-fetch');
 
 const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx?rlkey=4px2hpxbg8p6fot2l65bkdamg&dl=1';
 
+// Índices das colunas relevantes (0-indexed)
+// Confirmados via análise da folha MOTHER
+const COL = {
+  AGENCIA:    55,
+  DATA_PREV:  56,
+  TIPO:       57,
+  ID:         58,
+  DATA:       59,
+  TN:         60,
+  REF:        61,
+  ENTIDADE:   62,
+  TENTIDADE:  65,
+  FASE:       66,
+  VVENDA:     67,
+  COMISSAO:   68,
+};
+
 const toNum = (v) => {
   if (v == null || v === '') return null;
   const n = parseFloat(String(v));
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 };
 
 const toStr = (v) => v != null && v !== '' ? String(v).trim() : null;
@@ -38,37 +55,40 @@ exports.handler = async (event) => {
     const response = await fetch(DROPBOX_URL, { timeout: 45000 });
     const buffer = await response.arrayBuffer();
 
-    // Não usar cellDates:true em conjunto com raw:true — conflito
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
     const sheet = workbook.Sheets['MOTHER'];
 
-    // raw:false para que os números sejam lidos corretamente
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false });
+    // Ler por array de arrays (header:1) para aceder por índice de coluna
+    // e evitar confusão com nomes de colunas duplicados
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
 
-    const consultores = rows
-      .filter(r => toStr(r['TIPO'])?.toUpperCase() === 'REC')
-      .filter(r => toStr(r['ENTIDADE']) && toStr(r['ENTIDADE']) !== 'NOPI')
+    // Ignorar linha de cabeçalho (row 0)
+    const dataRows = rows.slice(1);
+
+    const consultores = dataRows
+      .filter(r => toStr(r[COL.TIPO])?.toUpperCase() === 'REC')
+      .filter(r => toStr(r[COL.ENTIDADE]) && toStr(r[COL.ENTIDADE]) !== 'NOPI')
       .map(r => ({
-        nome: toStr(r['ENTIDADE']),
-        agencia: toStr(r['AGENCIA']),
-        objetivoFaturacao: toNum(r['COMISSAO']),
-        dataEntrada: toDate(r['DATA PREV']),
+        nome:              toStr(r[COL.ENTIDADE]),
+        agencia:           toStr(r[COL.AGENCIA]),
+        objetivoFaturacao: toNum(r[COL.COMISSAO]),
+        dataEntrada:       toDate(r[COL.DATA_PREV]),
       }));
 
-    const angariações = rows
+    const angariações = dataRows
       .filter(r =>
-        toStr(r['TN'])?.toUpperCase() === 'VO' &&
-        toStr(r['FASE'])?.toUpperCase() === 'C'
+        toStr(r[COL.TN])?.toUpperCase() === 'VO' &&
+        toStr(r[COL.FASE])?.toUpperCase() === 'C'
       )
       .map(r => ({
-        consultor: toStr(r['ENTIDADE']),
-        agencia: toStr(r['AGENCIA']),
-        referencia: toStr(r['REF']),
-        localidade: toStr(r['ID']),
-        tipoImovel: toStr(r['TENTIDADE']),
-        preco: toNum(r['VVENDA']),
-        comissao: toNum(r['COMISSAO']),
-        data: toDate(r['DATA']),
+        consultor:  toStr(r[COL.ENTIDADE]),
+        agencia:    toStr(r[COL.AGENCIA]),
+        referencia: toStr(r[COL.REF]),
+        localidade: toStr(r[COL.ID]),
+        tipoImovel: toStr(r[COL.TENTIDADE]),
+        preco:      toNum(r[COL.VVENDA]),
+        comissao:   toNum(r[COL.COMISSAO]),
+        data:       toDate(r[COL.DATA]),
       }));
 
     return {
