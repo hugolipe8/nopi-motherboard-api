@@ -70,7 +70,7 @@ exports.handler = async (event) => {
       }));
 
     // Baixas de preço — TIPO=ANG e PQPROC=B
-    // Agrupar por referência, guardar a mais recente (maior DATA)
+    // Guardar a mais recente por referência
     const baixasMap = {};
     dataRows
       .filter(r =>
@@ -82,7 +82,6 @@ exports.handler = async (event) => {
         if (!ref) return;
         const data = toDate(r[COL.DATA]);
         const existing = baixasMap[ref];
-        // Guardar a baixa mais recente por referência
         if (!existing || data > existing.data) {
           baixasMap[ref] = {
             precoNovo:    toNum(r[COL.VVENDA]),
@@ -101,18 +100,24 @@ exports.handler = async (event) => {
       .map(r => {
         const ref = toStr(r[COL.REF]);
         const baixa = baixasMap[ref] || null;
+        const precoOriginal  = toNum(r[COL.VVENDA]);
+        const comissaoOriginal = toNum(r[COL.COMISSAO]);
+
         return {
           consultor:   toStr(r[COL.ENTIDADE]),
           agencia:     toStr(r[COL.AGENCIA]),
           referencia:  ref,
           localidade:  toStr(r[COL.ID]),
           tipoImovel:  toStr(r[COL.TENTIDADE]),
-          preco:       toNum(r[COL.VVENDA]),
-          comissao:    toNum(r[COL.COMISSAO]),
+          // Preço e comissão atuais — usam a baixa mais recente se existir
+          preco:       baixa ? baixa.precoNovo    : precoOriginal,
+          comissao:    baixa ? baixa.comissaoNova : comissaoOriginal,
           data:        toDate(r[COL.DATA]),
           link:        ref ? `https://www.century21.pt/ref/${ref}` : null,
+          // Informação sobre baixa de preço
           baixaPreco:  baixa ? {
-            precoAnterior:    toNum(r[COL.VVENDA]),
+            precoAnterior:    precoOriginal,
+            comissaoAnterior: comissaoOriginal,
             precoNovo:        baixa.precoNovo,
             comissaoNova:     baixa.comissaoNova,
             data:             baixa.data,
