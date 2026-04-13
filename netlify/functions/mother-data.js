@@ -3,9 +3,8 @@ const fetch = require('node-fetch');
 
 const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx?rlkey=4px2hpxbg8p6fot2l65bkdamg&dl=1';
 
-// Índices das colunas relevantes (0-indexed)
-// Confirmados via análise da folha MOTHER
 const COL = {
+  PQPROC:     54,
   AGENCIA:    55,
   DATA_PREV:  56,
   TIPO:       57,
@@ -54,17 +53,12 @@ exports.handler = async (event) => {
   try {
     const response = await fetch(DROPBOX_URL, { timeout: 45000 });
     const buffer = await response.arrayBuffer();
-
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
     const sheet = workbook.Sheets['MOTHER'];
-
-    // Ler por array de arrays (header:1) para aceder por índice de coluna
-    // e evitar confusão com nomes de colunas duplicados
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-
-    // Ignorar linha de cabeçalho (row 0)
     const dataRows = rows.slice(1);
 
+    // Consultores — filtrar por TIPO=REC
     const consultores = dataRows
       .filter(r => toStr(r[COL.TIPO])?.toUpperCase() === 'REC')
       .filter(r => toStr(r[COL.ENTIDADE]) && toStr(r[COL.ENTIDADE]) !== 'NOPI')
@@ -75,21 +69,56 @@ exports.handler = async (event) => {
         dataEntrada:       toDate(r[COL.DATA_PREV]),
       }));
 
+    // Baixas de preço — TIPO=ANG e PQPROC=B
+    // Agrupar por referência, guardar a mais recente (maior DATA)
+    const baixasMap = {};
+    dataRows
+      .filter(r =>
+        toStr(r[COL.TIPO])?.toUpperCase() === 'ANG' &&
+        toStr(r[COL.PQPROC])?.toUpperCase() === 'B'
+      )
+      .forEach(r => {
+        const ref = toStr(r[COL.REF]);
+        if (!ref) return;
+        const data = toDate(r[COL.DATA]);
+        const existing = baixasMap[ref];
+        // Guardar a baixa mais recente por referência
+        if (!existing || data > existing.data) {
+          baixasMap[ref] = {
+            precoNovo:    toNum(r[COL.VVENDA]),
+            comissaoNova: toNum(r[COL.COMISSAO]),
+            data,
+          };
+        }
+      });
+
+    // Angariações ativas — TN=VO e FASE=C
     const angariações = dataRows
       .filter(r =>
         toStr(r[COL.TN])?.toUpperCase() === 'VO' &&
         toStr(r[COL.FASE])?.toUpperCase() === 'C'
       )
-      .map(r => ({
-        consultor:  toStr(r[COL.ENTIDADE]),
-        agencia:    toStr(r[COL.AGENCIA]),
-        referencia: toStr(r[COL.REF]),
-        localidade: toStr(r[COL.ID]),
-        tipoImovel: toStr(r[COL.TENTIDADE]),
-        preco:      toNum(r[COL.VVENDA]),
-        comissao:   toNum(r[COL.COMISSAO]),
-        data:       toDate(r[COL.DATA]),
-      }));
+      .map(r => {
+        const ref = toStr(r[COL.REF]);
+        const baixa = baixasMap[ref] || null;
+        return {
+          consultor:   toStr(r[COL.ENTIDADE]),
+          agencia:     toStr(r[COL.AGENCIA]),
+          referencia:  ref,
+          localidade:  toStr(r[COL.ID]),
+          tipoImovel:  toStr(r[COL.TENTIDADE]),
+          preco:       toNum(r[COL.VVENDA]),
+          comissao:    toNum(r[COL.COMISSAO]),
+          data:        toDate(r[COL.DATA]),
+          link:        ref ? `https://www.century21.pt/ref/${ref}` : null,
+          baixaPreco:  baixa ? {
+            precoAnterior:    toNum(r[COL.VVENDA]),
+            precoNovo:        baixa.precoNovo,
+            comissaoNova:     baixa.comissaoNova,
+            data:             baixa.data,
+          } : null,
+        };
+      });
 
     return {
       statusCode: 200,
