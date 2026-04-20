@@ -19,11 +19,9 @@ const ZAPI_URL      = `https://api.z-api.io/instances/${ZAPI_INSTANCE}/token/${Z
 // true  = todas as mensagens vão para o teu número (testes)
 // false = mensagens vão para o consultor real (produção)
 const MODO_TESTE = true;
-const NUMERO_TESTE = "351913962809"; // o teu número sem o +
+const NUMERO_TESTE = "351913962809";
 
 // ── Credenciais 21Online ───────────────────────────────────────────────────────
-// Recomendo mover estes valores para variáveis de ambiente no Netlify:
-// VEINTIUNO_EMAIL e VEINTIUNO_PASSWORD
 const EMAIL    = process.env.VEINTIUNO_EMAIL    || "filipe.moreira@century21.pt";
 const PASSWORD = process.env.VEINTIUNO_PASSWORD || "HugoFilipe.2000";
 
@@ -46,7 +44,10 @@ function json(statusCode, body) {
 async function login21Online() {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJydW1qdHlkdGx4aG9vcXJyc2NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA5MjMzNzMsImV4cCI6MjA1NjQ5OTM3M30.N0HPIM-5pYa8rNHTRZDpnLblGiS0VLSOFPa_F5LCqeM" },
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJydW1qdHlkdGx4aG9vcXJyc2NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA5MjMzNzMsImV4cCI6MjA1NjQ5OTM3M30.N0HPIM-5pYa8rNHTRZDpnLblGiS0VLSOFPa_F5LCqeM"
+    },
     body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
   });
   if (!res.ok) throw new Error(`Login falhou: ${res.status}`);
@@ -116,8 +117,14 @@ exports.handler = async (event) => {
   }
 
   try {
-    // 1. Ler último timestamp processado do Netlify Blobs
-    const store = getStore("nopi-leads");
+    // Configuração explícita do Netlify Blobs com variáveis de ambiente
+    const store = getStore({
+      name:   "nopi-leads",
+      siteID: process.env.NETLIFY_SITE_ID,
+      token:  process.env.NETLIFY_TOKEN,
+    });
+
+    // 1. Ler último timestamp processado
     let ultimoTimestamp = null;
     try {
       ultimoTimestamp = await store.get("last_lead_timestamp");
@@ -174,11 +181,11 @@ exports.handler = async (event) => {
         resultados.push({ leadId: lead.id, status: "erro", erro: err.message });
       }
 
-      // Pequena pausa entre mensagens para não sobrecarregar o Z-API
+      // Pequena pausa entre mensagens
       await new Promise(r => setTimeout(r, 1000));
     }
 
-    // 6. Guardar novo timestamp (a lead mais recente processada)
+    // 6. Guardar novo timestamp
     const maisRecente = leadsNovas[leadsNovas.length - 1];
     const novoTimestamp = maisRecente.created_at || maisRecente.data || new Date().toISOString();
     await store.set("last_lead_timestamp", novoTimestamp);
