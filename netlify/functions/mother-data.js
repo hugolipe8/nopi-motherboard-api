@@ -69,8 +69,9 @@ exports.handler = async (event) => {
         dataEntrada:       toDate(r[COL.DATA_PREV]),
       }));
 
-    // Baixas de preço — TIPO=ANG e PQPROC=B
+    // Baixas de preço e transferências — TIPO=ANG e PQPROC=B
     // Guardar a mais recente por referência
+    // Se ENTIDADE for diferente do consultor original = transferência de angariação
     const baixasMap = {};
     dataRows
       .filter(r =>
@@ -84,9 +85,12 @@ exports.handler = async (event) => {
         const existing = baixasMap[ref];
         if (!existing || data > existing.data) {
           baixasMap[ref] = {
-            precoNovo:    toNum(r[COL.VVENDA]),
-            comissaoNova: toNum(r[COL.COMISSAO]),
+            precoNovo:     toNum(r[COL.VVENDA]),
+            comissaoNova:  toNum(r[COL.COMISSAO]),
             data,
+            // Novo consultor/agência (pode ser transferência ou só baixa de preço)
+            novoConsultor: toStr(r[COL.ENTIDADE]),
+            novaAgencia:   toStr(r[COL.AGENCIA]),
           };
         }
       });
@@ -100,21 +104,25 @@ exports.handler = async (event) => {
       .map(r => {
         const ref = toStr(r[COL.REF]);
         const baixa = baixasMap[ref] || null;
-        const precoOriginal  = toNum(r[COL.VVENDA]);
-        const comissaoOriginal = toNum(r[COL.COMISSAO]);
+        const precoOriginal     = toNum(r[COL.VVENDA]);
+        const comissaoOriginal  = toNum(r[COL.COMISSAO]);
+        const consultorOriginal = toStr(r[COL.ENTIDADE]);
+        const agenciaOriginal   = toStr(r[COL.AGENCIA]);
+
+        // Se há linha B com consultor diferente = transferência, usar novo consultor
+        const consultorFinal = baixa?.novoConsultor || consultorOriginal;
+        const agenciaFinal   = baixa?.novaAgencia   || agenciaOriginal;
 
         return {
-          consultor:   toStr(r[COL.ENTIDADE]),
-          agencia:     toStr(r[COL.AGENCIA]),
+          consultor:   consultorFinal,
+          agencia:     agenciaFinal,
           referencia:  ref,
           localidade:  toStr(r[COL.ID]),
           tipoImovel:  toStr(r[COL.TENTIDADE]),
-          // Preço e comissão atuais — usam a baixa mais recente se existir
           preco:       baixa ? baixa.precoNovo    : precoOriginal,
           comissao:    baixa ? baixa.comissaoNova : comissaoOriginal,
           data:        toDate(r[COL.DATA]),
           link:        ref ? `https://www.century21.pt/ref/${ref}` : null,
-          // Informação sobre baixa de preço
           baixaPreco:  baixa ? {
             precoAnterior:    precoOriginal,
             comissaoAnterior: comissaoOriginal,
