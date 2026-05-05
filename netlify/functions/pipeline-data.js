@@ -169,7 +169,7 @@ exports.handler = async (event) => {
       const tn = toStr(linhasA[0][COL.TN])?.toUpperCase() || '';
       const hasF1 = false;
       const hasF3 = false;
-      const extraFields = { dataPerdido: toDate(linhasA[0][COL.DATA]) };
+      const extraFields = { dataPrev: toDate(linhasA[0][COL.DATA_PREV]) };
       processosPerdidos.push(...processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields));
     });
 
