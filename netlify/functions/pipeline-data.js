@@ -4,18 +4,18 @@ const fetch = require('node-fetch');
 const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx?rlkey=4px2hpxbg8p6fot2l65bkdamg&dl=1';
 
 const COL = {
-  PQPROC:   54,
-  AGENCIA:  55,
+  PQPROC:    54,
+  AGENCIA:   55,
   DATA_PREV: 56,
-  TIPO:     57,
-  ID:       58,
-  DATA:     59,
-  TN:       60,
-  REF:      61,
-  ENTIDADE: 62,
-  FASE:     66,
-  VVENDA:   67,
-  COMISSAO: 68,
+  TIPO:      57,
+  ID:        58,
+  DATA:      59,
+  TN:        60,
+  REF:       61,
+  ENTIDADE:  62,
+  FASE:      66,
+  VVENDA:    67,
+  COMISSAO:  68,
 };
 
 const toNum = (v) => {
@@ -44,20 +44,13 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-function calcComissao(tn, comissao, hasF1, hasF3) {
-  if (hasF1) return null; // "-" já recebida
-  const tnUp = (tn || '').toUpperCase();
-  if (tnUp === 'V1' || tnUp === 'A1') {
-    // Pleno de agência — metade para cada consultor
-    return hasF3 ? comissao / 4 : comissao / 2;
-  } else if (tnUp === 'V2' || tnUp === 'A2') {
-    // Partilha imóvel nosso — 1ª linha é nossa
-    return hasF3 ? comissao / 4 : comissao / 2;
-  } else if (tnUp === 'V3' || tnUp === 'A3') {
-    // Partilha imóvel externo — 2ª linha é nossa
-    return hasF3 ? comissao / 2 : comissao / 2;
-  }
-  return comissao / 2;
+function calcComissao(tn, comissaoBase, hasF1, hasF3) {
+  if (hasF1) return null;
+  const t = (tn || '').toUpperCase();
+  if (t === 'V1' || t === 'A1') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
+  if (t === 'V2' || t === 'A2') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
+  if (t === 'V3' || t === 'A3') return hasF3 ? comissaoBase / 2 : comissaoBase / 2;
+  return comissaoBase / 2;
 }
 
 exports.handler = async (event) => {
@@ -76,7 +69,7 @@ exports.handler = async (event) => {
     // Filtrar apenas linhas TIPO=PROC e PQPROC vazio (não fechados)
     const procRows = dataRows.filter(r =>
       toStr(r[COL.TIPO])?.toUpperCase() === 'PROC' &&
-      !toStr(r[COL.PQPROC]) // PQPROC vazio = ativo
+      !toStr(r[COL.PQPROC])
     );
 
     // Agrupar por processo (ID)
@@ -88,11 +81,9 @@ exports.handler = async (event) => {
       processosMap[id].push(r);
     });
 
-    // Para cada processo, calcular comissão e identificar consultor NOPI
     const processos = [];
 
     Object.entries(processosMap).forEach(([id, linhas]) => {
-      // Linhas de abertura (FASE=A)
       const linhasA = linhas.filter(r => toStr(r[COL.FASE])?.toUpperCase() === 'A');
       if (linhasA.length === 0) return;
 
@@ -100,58 +91,53 @@ exports.handler = async (event) => {
       const comissaoBase = toNum(linhasA[0][COL.COMISSAO]) || 0;
       const hasF1 = linhas.some(r => toStr(r[COL.FASE])?.toUpperCase() === 'F1');
       const hasF3 = linhas.some(r => toStr(r[COL.FASE])?.toUpperCase() === 'F3');
+      const ref = toStr(linhasA[0][COL.REF]);
 
-      // Identificar consultor NOPI
-      let consultorNopi = null;
-      let agencia = null;
-
-      if (tn === 'V1' || tn === 'A1') {
-        // Ambas as linhas são nossas — criar entrada para cada uma
-        linhasA.forEach(linha => {
-          const comissao = calcComissao(tn, comissaoBase, hasF1, hasF3);
-          processos.push({
-            consultor: toStr(linha[COL.ENTIDADE]),
-            agencia:   toStr(linha[COL.AGENCIA]),
-            processo:  id,
-            ref:       toStr(linha[COL.REF]),
-            data:      toDate(linha[COL.DATA]),
-            dataPrev:  toDate(linha[COL.DATA_PREV]),
-            preco:     toNum(linha[COL.VVENDA]),
-            comissao:  hasF1 ? null : comissao,
-            comissaoRecebida: hasF1 ? 'CPCV' : hasF3 ? 'PARCIAL' : null,
-            tn,
-          });
-        });
-        return;
-      } else if (tn === 'V2' || tn === 'A2') {
-        // 1ª linha é nossa
-        if (linhasA.length >= 1) {
-          consultorNopi = toStr(linhasA[0][COL.ENTIDADE]);
-          agencia = toStr(linhasA[0][COL.AGENCIA]);
-        }
-      } else if (tn === 'V3' || tn === 'A3') {
-        // 2ª linha é nossa
-        if (linhasA.length >= 2) {
-          consultorNopi = toStr(linhasA[1][COL.ENTIDADE]);
-          agencia = toStr(linhasA[1][COL.AGENCIA]);
-        }
-      }
-
-      if (!consultorNopi) return;
-
-      const comissao = calcComissao(tn, comissaoBase, hasF1, hasF3);
-      processos.push({
-        consultor: consultorNopi,
-        agencia,
+      // Campos comuns a todos os casos
+      const base = {
         processo:  id,
-        ref:       toStr(linhasA[0][COL.REF]),
+        ref:       ref || null,
         data:      toDate(linhasA[0][COL.DATA]),
         dataPrev:  toDate(linhasA[0][COL.DATA_PREV]),
         preco:     toNum(linhasA[0][COL.VVENDA]),
-        comissao:  hasF1 ? null : comissao,
+        comissao:  calcComissao(tn, comissaoBase, hasF1, hasF3),
         comissaoRecebida: hasF1 ? 'CPCV' : hasF3 ? 'PARCIAL' : null,
         tn,
-      });
+      };
+
+      if (tn === 'V1' || tn === 'A1') {
+        // Pleno — uma entrada por cada consultor nosso (sem duplicar)
+        const consultoresVistos = new Set();
+        linhasA.forEach(linha => {
+          const consultor = toStr(linha[COL.ENTIDADE]);
+          if (!consultor || consultoresVistos.has(consultor)) return;
+          consultoresVistos.add(consultor);
+          processos.push({
+            ...base,
+            consultor,
+            agencia: toStr(linha[COL.AGENCIA]),
+          });
+        });
+      } else if (tn === 'V2' || tn === 'A2') {
+        // 1ª linha é nossa — uma entrada
+        const consultor = toStr(linhasA[0][COL.ENTIDADE]);
+        if (!consultor) return;
+        processos.push({
+          ...base,
+          consultor,
+          agencia: toStr(linhasA[0][COL.AGENCIA]),
+        });
+      } else if (tn === 'V3' || tn === 'A3') {
+        // 2ª linha é nossa — uma entrada
+        if (linhasA.length < 2) return;
+        const consultor = toStr(linhasA[1][COL.ENTIDADE]);
+        if (!consultor) return;
+        processos.push({
+          ...base,
+          consultor,
+          agencia: toStr(linhasA[1][COL.AGENCIA]),
+        });
+      }
     });
 
     return {
