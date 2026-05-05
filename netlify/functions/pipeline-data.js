@@ -44,10 +44,14 @@ const CORS = {
   'Content-Type': 'application/json',
 };
 
-function calcComissao(tn, comissaoBase, hasF1, hasF3) {
+function calcComissao(tn, comissaoBase, hasF1, hasF3, numConsultoresUnicos) {
   if (hasF1) return null;
   const t = (tn || '').toUpperCase();
-  if (t === 'V1' || t === 'A1') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
+  if (t === 'V1' || t === 'A1') {
+    // Divide pela quantidade de consultores únicos no processo
+    const parteConsultor = comissaoBase / (numConsultoresUnicos || 1);
+    return hasF3 ? parteConsultor / 2 : parteConsultor;
+  }
   if (t === 'V2' || t === 'A2') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
   if (t === 'V3' || t === 'A3') return hasF3 ? comissaoBase / 2 : comissaoBase / 2;
   return comissaoBase / 2;
@@ -93,42 +97,43 @@ exports.handler = async (event) => {
       const hasF3 = linhas.some(r => toStr(r[COL.FASE])?.toUpperCase() === 'F3');
       const ref = toStr(linhasA[0][COL.REF]);
 
-      // Campos comuns a todos os casos
       const base = {
         processo:  id,
         ref:       ref || null,
         data:      toDate(linhasA[0][COL.DATA]),
         dataPrev:  toDate(linhasA[0][COL.DATA_PREV]),
         preco:     toNum(linhasA[0][COL.VVENDA]),
-        comissao:  calcComissao(tn, comissaoBase, hasF1, hasF3),
         comissaoRecebida: hasF1 ? 'CPCV' : hasF3 ? 'PARCIAL' : null,
         tn,
       };
 
       if (tn === 'V1' || tn === 'A1') {
-        // Pleno — uma entrada por cada consultor nosso (sem duplicar)
-        const consultoresVistos = new Set();
-        linhasA.forEach(linha => {
-          const consultor = toStr(linha[COL.ENTIDADE]);
-          if (!consultor || consultoresVistos.has(consultor)) return;
-          consultoresVistos.add(consultor);
+        // Contar consultores únicos nas linhas A
+        const consultoresUnicos = [...new Set(
+          linhasA.map(l => toStr(l[COL.ENTIDADE])).filter(Boolean)
+        )];
+        const numUnicos = consultoresUnicos.length;
+        const comissao = calcComissao(tn, comissaoBase, hasF1, hasF3, numUnicos);
+
+        consultoresUnicos.forEach(consultor => {
+          const linha = linhasA.find(l => toStr(l[COL.ENTIDADE]) === consultor);
           processos.push({
             ...base,
             consultor,
             agencia: toStr(linha[COL.AGENCIA]),
+            comissao,
           });
         });
       } else if (tn === 'V2' || tn === 'A2') {
-        // 1ª linha é nossa — uma entrada
         const consultor = toStr(linhasA[0][COL.ENTIDADE]);
         if (!consultor) return;
         processos.push({
           ...base,
           consultor,
           agencia: toStr(linhasA[0][COL.AGENCIA]),
+          comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
         });
       } else if (tn === 'V3' || tn === 'A3') {
-        // 2ª linha é nossa — uma entrada
         if (linhasA.length < 2) return;
         const consultor = toStr(linhasA[1][COL.ENTIDADE]);
         if (!consultor) return;
@@ -136,6 +141,7 @@ exports.handler = async (event) => {
           ...base,
           consultor,
           agencia: toStr(linhasA[1][COL.AGENCIA]),
+          comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
         });
       }
     });
