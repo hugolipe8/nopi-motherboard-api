@@ -47,14 +47,62 @@ const CORS = {
 function calcComissao(tn, comissaoBase, hasF1, hasF3, numConsultoresUnicos) {
   if (hasF1) return null;
   const t = (tn || '').toUpperCase();
-  if (t === 'V1' || t === 'A1') {
-    // Divide pela quantidade de consultores únicos no processo
+  if (t === 'V1' || t === 'A1' || t === 'P1') {
     const parteConsultor = comissaoBase / (numConsultoresUnicos || 1);
     return hasF3 ? parteConsultor / 2 : parteConsultor;
   }
-  if (t === 'V2' || t === 'A2') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
-  if (t === 'V3' || t === 'A3') return hasF3 ? comissaoBase / 2 : comissaoBase;
+  if (t === 'V2' || t === 'A2' || t === 'P2') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
+  if (t === 'V3' || t === 'A3' || t === 'P3') return hasF3 ? comissaoBase / 2 : comissaoBase;
   return comissaoBase / 2;
+}
+
+function processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields) {
+  const comissaoBase = toNum(linhasA[0][COL.COMISSAO]) || 0;
+  const ref = toStr(linhasA[0][COL.REF]);
+  const base = {
+    processo: id,
+    ref:      ref || null,
+    data:     toDate(linhasA[0][COL.DATA]),
+    preco:    toNum(linhasA[0][COL.VVENDA]),
+    comissaoRecebida: hasF1 ? 'CPCV' : hasF3 ? 'PARCIAL' : null,
+    tn,
+    ...extraFields,
+  };
+
+  const resultado = [];
+  const t = tn.toUpperCase();
+
+  if (t === 'V1' || t === 'A1' || t === 'P1') {
+    const consultoresUnicos = [...new Set(
+      linhasA.map(l => toStr(l[COL.ENTIDADE])).filter(Boolean)
+    )];
+    const comissao = calcComissao(tn, comissaoBase, hasF1, hasF3, consultoresUnicos.length);
+    consultoresUnicos.forEach(consultor => {
+      const linha = linhasA.find(l => toStr(l[COL.ENTIDADE]) === consultor);
+      resultado.push({ ...base, consultor, agencia: toStr(linha[COL.AGENCIA]), comissao });
+    });
+  } else if (t === 'V2' || t === 'A2' || t === 'P2') {
+    const consultor = toStr(linhasA[0][COL.ENTIDADE]);
+    if (!consultor) return resultado;
+    resultado.push({
+      ...base,
+      consultor,
+      agencia: toStr(linhasA[0][COL.AGENCIA]),
+      comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
+    });
+  } else if (t === 'V3' || t === 'A3' || t === 'P3') {
+    if (linhasA.length < 2) return resultado;
+    const consultor = toStr(linhasA[1][COL.ENTIDADE]);
+    if (!consultor) return resultado;
+    resultado.push({
+      ...base,
+      consultor,
+      agencia: toStr(linhasA[1][COL.AGENCIA]),
+      comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
+    });
+  }
+
+  return resultado;
 }
 
 exports.handler = async (event) => {
@@ -70,86 +118,65 @@ exports.handler = async (event) => {
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     const dataRows = rows.slice(1);
 
-    // Filtrar apenas linhas TIPO=PROC e PQPROC vazio (não fechados)
-    const procRows = dataRows.filter(r =>
+    const TN_ATIVOS   = new Set(['V1','V2','V3','A1','A2','A3']);
+    const TN_PERDIDOS = new Set(['P1','P2','P3']);
+
+    // ── Processos Ativos — TIPO=PROC, PQPROC vazio ───────────────────────────
+    const procAtivosRows = dataRows.filter(r =>
       toStr(r[COL.TIPO])?.toUpperCase() === 'PROC' &&
-      !toStr(r[COL.PQPROC])
+      !toStr(r[COL.PQPROC]) &&
+      TN_ATIVOS.has(toStr(r[COL.TN])?.toUpperCase())
     );
 
-    // Agrupar por processo (ID)
-    const processosMap = {};
-    procRows.forEach(r => {
+    const ativosMap = {};
+    procAtivosRows.forEach(r => {
       const id = toStr(r[COL.ID]);
       if (!id) return;
-      if (!processosMap[id]) processosMap[id] = [];
-      processosMap[id].push(r);
+      if (!ativosMap[id]) ativosMap[id] = [];
+      ativosMap[id].push(r);
     });
 
     const processos = [];
-
-    Object.entries(processosMap).forEach(([id, linhas]) => {
+    Object.entries(ativosMap).forEach(([id, linhas]) => {
       const linhasA = linhas.filter(r => toStr(r[COL.FASE])?.toUpperCase() === 'A');
       if (linhasA.length === 0) return;
-
       const tn = toStr(linhasA[0][COL.TN])?.toUpperCase() || '';
-      const comissaoBase = toNum(linhasA[0][COL.COMISSAO]) || 0;
       const hasF1 = linhas.some(r => toStr(r[COL.FASE])?.toUpperCase() === 'F1');
       const hasF3 = linhas.some(r => toStr(r[COL.FASE])?.toUpperCase() === 'F3');
-      const ref = toStr(linhasA[0][COL.REF]);
+      const extraFields = { dataPrev: toDate(linhasA[0][COL.DATA_PREV]) };
+      processos.push(...processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields));
+    });
 
-      const base = {
-        processo:  id,
-        ref:       ref || null,
-        data:      toDate(linhasA[0][COL.DATA]),
-        dataPrev:  toDate(linhasA[0][COL.DATA_PREV]),
-        preco:     toNum(linhasA[0][COL.VVENDA]),
-        comissaoRecebida: hasF1 ? 'CPCV' : hasF3 ? 'PARCIAL' : null,
-        tn,
-      };
+    // ── Processos Perdidos — TIPO=PROC, TN=P1/P2/P3, PQPROC=F ───────────────
+    const procPerdidosRows = dataRows.filter(r =>
+      toStr(r[COL.TIPO])?.toUpperCase() === 'PROC' &&
+      toStr(r[COL.PQPROC])?.toUpperCase() === 'F' &&
+      TN_PERDIDOS.has(toStr(r[COL.TN])?.toUpperCase())
+    );
 
-      if (tn === 'V1' || tn === 'A1') {
-        // Contar consultores únicos nas linhas A
-        const consultoresUnicos = [...new Set(
-          linhasA.map(l => toStr(l[COL.ENTIDADE])).filter(Boolean)
-        )];
-        const numUnicos = consultoresUnicos.length;
-        const comissao = calcComissao(tn, comissaoBase, hasF1, hasF3, numUnicos);
+    const perdidosMap = {};
+    procPerdidosRows.forEach(r => {
+      const id = toStr(r[COL.ID]);
+      if (!id) return;
+      if (!perdidosMap[id]) perdidosMap[id] = [];
+      perdidosMap[id].push(r);
+    });
 
-        consultoresUnicos.forEach(consultor => {
-          const linha = linhasA.find(l => toStr(l[COL.ENTIDADE]) === consultor);
-          processos.push({
-            ...base,
-            consultor,
-            agencia: toStr(linha[COL.AGENCIA]),
-            comissao,
-          });
-        });
-      } else if (tn === 'V2' || tn === 'A2') {
-        const consultor = toStr(linhasA[0][COL.ENTIDADE]);
-        if (!consultor) return;
-        processos.push({
-          ...base,
-          consultor,
-          agencia: toStr(linhasA[0][COL.AGENCIA]),
-          comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
-        });
-      } else if (tn === 'V3' || tn === 'A3') {
-        if (linhasA.length < 2) return;
-        const consultor = toStr(linhasA[1][COL.ENTIDADE]);
-        if (!consultor) return;
-        processos.push({
-          ...base,
-          consultor,
-          agencia: toStr(linhasA[1][COL.AGENCIA]),
-          comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
-        });
-      }
+    const processosPerdidos = [];
+    Object.entries(perdidosMap).forEach(([id, linhas]) => {
+      const linhasA = linhas.filter(r => toStr(r[COL.FASE])?.toUpperCase() === 'A');
+      if (linhasA.length === 0) return;
+      const tn = toStr(linhasA[0][COL.TN])?.toUpperCase() || '';
+      const hasF1 = false;
+      const hasF3 = false;
+      const extraFields = { dataPerdido: toDate(linhasA[0][COL.DATA]) };
+      processosPerdidos.push(...processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields));
     });
 
     return {
       statusCode: 200,
       headers: CORS,
-      body: JSON.stringify({ processos }),
+      body: JSON.stringify({ processos, processosPerdidos }),
     };
   } catch (err) {
     return {
