@@ -53,7 +53,7 @@ function calcComissao(tn, comissaoBase, hasF1, hasF3, numConsultoresUnicos) {
     return hasF3 ? parteConsultor / 2 : parteConsultor;
   }
   if (t === 'V2' || t === 'A2') return hasF3 ? comissaoBase / 4 : comissaoBase / 2;
-  if (t === 'V3' || t === 'A3') return hasF3 ? comissaoBase / 2 : comissaoBase / 2;
+  if (t === 'V3' || t === 'A3') return hasF3 ? comissaoBase / 2 : comissaoBase;
   return comissaoBase / 2;
 }
 
