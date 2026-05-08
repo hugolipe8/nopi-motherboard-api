@@ -59,14 +59,10 @@ function json(statusCode, body, extra = {}) {
   };
 }
 
-// Detecta se a tabela tem estrutura O/R (meses com dados: FAT-O, FAT-R, ANG-O, ANG-R...)
-// ou estrutura colapsada (só R: FAT-R, ANG-R, PROP-R...)
-// BRG com O/R: off+2=FAT-R, off+4=ANG-R, off+8=CONT-R
-// BRG colapsada / BCL / BGC: off+1=FAT-R, off+2=ANG-R, off+4=CONT-R
-function hasORStructure(rows, headerRowStart, headerRowEnd, off) {
+function hasORStructure(rows, headerRowStart, headerRowEnd, nameCol) {
   for (let r = headerRowStart; r <= headerRowEnd; r++) {
     const row = rows[r] || [];
-    for (let c = off + 1; c < off + 6; c++) {
+    for (let c = nameCol + 1; c < nameCol + 6; c++) {
       if (String(row[c] ?? "").trim() === "O") return true;
     }
   }
@@ -76,29 +72,37 @@ function hasORStructure(rows, headerRowStart, headerRowEnd, off) {
 function extractAgency(rows, agencyCode, off) {
   const result = [];
 
-  // Encontrar linha da agência dinamicamente a partir da row 50
+  // Procurar linha da agência em off OU off+1 (estrutura pode variar por mês)
   let agRowIdx = -1;
+  let nameCol = off; // coluna onde estão os nomes
+
   for (let i = 50; i < rows.length; i++) {
     if (String(rows[i][off] ?? "").trim().toUpperCase() === agencyCode) {
       agRowIdx = i;
+      nameCol = off;
+      break;
+    }
+    if (String(rows[i][off + 1] ?? "").trim().toUpperCase() === agencyCode) {
+      agRowIdx = i;
+      nameCol = off + 1;
       break;
     }
   }
 
   if (agRowIdx === -1) return result;
 
-  // Detectar estrutura O/R nos cabeçalhos acima
-  const isOR = hasORStructure(rows, Math.max(0, agRowIdx - 8), agRowIdx - 1, off);
+  // Detectar estrutura O/R
+  const isOR = hasORStructure(rows, Math.max(0, agRowIdx - 8), agRowIdx - 1, nameCol);
 
-  // Offsets consoante estrutura
-  const fatCol  = isOR ? off + 2 : off + 1;
-  const angCol  = isOR ? off + 4 : off + 2;
-  const contCol = isOR ? off + 8 : off + 4;
+  // Offsets consoante estrutura e coluna de nomes
+  const fatCol  = isOR ? nameCol + 2 : nameCol + 1;
+  const angCol  = isOR ? nameCol + 4 : nameCol + 2;
+  const contCol = isOR ? nameCol + 8 : nameCol + 4;
 
-  // Ler consultores dinamicamente
+  // Ler consultores
   for (let i = agRowIdx + 1; i < rows.length; i++) {
     const row  = rows[i];
-    const name = String(row[off] ?? "").trim();
+    const name = String(row[nameCol] ?? "").trim();
     if (!name) continue;
     const lower = name.toLowerCase();
     if (STOP.has(lower)) break;
