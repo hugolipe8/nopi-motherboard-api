@@ -11,7 +11,7 @@ const EXCEL_URL = [
   "?rlkey=4px2hpxbg8p6fot2l65bkdamg&st=4h2vu72e&dl=1",
 ].join("");
 
-const MONTH_OFFSETS = [0, 17, 30, 42, 59, 71, 83, 95, 107, 119, 131, 143];
+const MONTH_OFFSETS = [0, 17, 30, 42, 59, 72, 83, 95, 107, 119, 131, 143];
 const MONTH_NAMES   = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
