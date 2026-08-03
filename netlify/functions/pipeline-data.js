@@ -1,8 +1,6 @@
 const XLSX = require('xlsx');
 const fetch = require('node-fetch');
-
-const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx?rlkey=4px2hpxbg8p6fot2l65bkdamg&dl=1';
-
+const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/q1e1l6enrinhm8ileg903/Motherboard-2026.xlsx?rlkey=lke29p1fipcrj8l4dl3hqb8gi&st=hrc3v22k&dl=1';
 const COL = {
   PQPROC:    54,
   AGENCIA:   55,
@@ -17,15 +15,12 @@ const COL = {
   VVENDA:    67,
   COMISSAO:  68,
 };
-
 const toNum = (v) => {
   if (v == null || v === '') return null;
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 };
-
 const toStr = (v) => v != null && v !== '' ? String(v).trim() : null;
-
 const toDate = (v) => {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString().split('T')[0];
@@ -37,13 +32,11 @@ const toDate = (v) => {
   }
   return String(v).split('T')[0];
 };
-
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',
 };
-
 function calcComissao(tn, comissaoBase, hasF1, hasF3, numConsultoresUnicos) {
   if (hasF1) return null;
   const t = (tn || '').toUpperCase();
@@ -55,7 +48,6 @@ function calcComissao(tn, comissaoBase, hasF1, hasF3, numConsultoresUnicos) {
   if (t === 'V3' || t === 'A3' || t === 'P3') return hasF3 ? comissaoBase / 2 : comissaoBase;
   return comissaoBase / 2;
 }
-
 function processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields) {
   const comissaoBase = toNum(linhasA[0][COL.COMISSAO]) || 0;
   const ref = toStr(linhasA[0][COL.REF]);
@@ -68,10 +60,8 @@ function processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields) {
     tn,
     ...extraFields,
   };
-
   const resultado = [];
   const t = tn.toUpperCase();
-
   if (t === 'V1' || t === 'A1' || t === 'P1') {
     const consultoresUnicos = [...new Set(
       linhasA.map(l => toStr(l[COL.ENTIDADE])).filter(Boolean)
@@ -101,15 +91,12 @@ function processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields) {
       comissao: calcComissao(tn, comissaoBase, hasF1, hasF3, 1),
     });
   }
-
   return resultado;
 }
-
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS, body: '' };
   }
-
   try {
     const response = await fetch(DROPBOX_URL, { timeout: 45000 });
     const buffer = await response.arrayBuffer();
@@ -117,17 +104,13 @@ exports.handler = async (event) => {
     const sheet = workbook.Sheets['MOTHER'];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     const dataRows = rows.slice(1);
-
     const TN_ATIVOS   = new Set(['V1','V2','V3','A1','A2','A3']);
     const TN_PERDIDOS = new Set(['P1','P2','P3']);
-
-    // ── Processos Ativos — TIPO=PROC, PQPROC vazio ───────────────────────────
     const procAtivosRows = dataRows.filter(r =>
       toStr(r[COL.TIPO])?.toUpperCase() === 'PROC' &&
       !toStr(r[COL.PQPROC]) &&
       TN_ATIVOS.has(toStr(r[COL.TN])?.toUpperCase())
     );
-
     const ativosMap = {};
     procAtivosRows.forEach(r => {
       const id = toStr(r[COL.ID]);
@@ -135,7 +118,6 @@ exports.handler = async (event) => {
       if (!ativosMap[id]) ativosMap[id] = [];
       ativosMap[id].push(r);
     });
-
     const processos = [];
     Object.entries(ativosMap).forEach(([id, linhas]) => {
       const linhasA = linhas.filter(r => toStr(r[COL.FASE])?.toUpperCase() === 'A');
@@ -146,14 +128,11 @@ exports.handler = async (event) => {
       const extraFields = { dataPrev: toDate(linhasA[0][COL.DATA_PREV]) };
       processos.push(...processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields));
     });
-
-    // ── Processos Perdidos — TIPO=PROC, TN=P1/P2/P3, PQPROC=F ───────────────
     const procPerdidosRows = dataRows.filter(r =>
       toStr(r[COL.TIPO])?.toUpperCase() === 'PROC' &&
       toStr(r[COL.PQPROC])?.toUpperCase() === 'F' &&
       TN_PERDIDOS.has(toStr(r[COL.TN])?.toUpperCase())
     );
-
     const perdidosMap = {};
     procPerdidosRows.forEach(r => {
       const id = toStr(r[COL.ID]);
@@ -161,7 +140,6 @@ exports.handler = async (event) => {
       if (!perdidosMap[id]) perdidosMap[id] = [];
       perdidosMap[id].push(r);
     });
-
     const processosPerdidos = [];
     Object.entries(perdidosMap).forEach(([id, linhas]) => {
       const linhasA = linhas.filter(r => toStr(r[COL.FASE])?.toUpperCase() === 'A');
@@ -172,7 +150,6 @@ exports.handler = async (event) => {
       const extraFields = { dataPrev: toDate(linhasA[0][COL.DATA_PREV]) };
       processosPerdidos.push(...processarLinhas(linhasA, linhas, tn, id, hasF1, hasF3, extraFields));
     });
-
     return {
       statusCode: 200,
       headers: CORS,
