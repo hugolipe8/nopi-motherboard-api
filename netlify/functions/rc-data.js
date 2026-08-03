@@ -2,42 +2,34 @@
  * Netlify Serverless Function — NOPI Motherboard API
  * GET /.netlify/functions/rc-data?mes=4
  */
-
 const fetch = require("node-fetch");
 const XLSX  = require("xlsx");
-
 const EXCEL_URL = [
-  "https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx",
-  "?rlkey=4px2hpxbg8p6fot2l65bkdamg&st=4h2vu72e&dl=1",
+  "https://www.dropbox.com/scl/fi/q1e1l6enrinhm8ileg903/Motherboard-2026.xlsx",
+  "?rlkey=lke29p1fipcrj8l4dl3hqb8gi&st=hrc3v22k&dl=1",
 ].join("");
-
 const MONTH_OFFSETS = [0, 17, 30, 42, 59, 72, 89, 95, 107, 119, 131, 143];
 const MONTH_NAMES   = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
-
 const SKIP = new Set(["brg","bcl","bgc","cg","ag","fp","cm"]);
 const STOP = new Set(["total geral","cessados"]);
-
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
-
 function toInt(v) {
   if (v == null || v === "") return 0;
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? Math.round(n) : 0;
 }
-
 function toNum(v) {
   if (v == null || v === "") return 0;
   const n = parseFloat(String(v).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 }
-
 function fmtDate(v) {
   if (v instanceof Date && !isNaN(v)) {
     const p = (n) => String(n).padStart(2, "0");
@@ -50,7 +42,6 @@ function fmtDate(v) {
   }
   return String(v || "");
 }
-
 function json(statusCode, body, extra = {}) {
   return {
     statusCode,
@@ -58,7 +49,6 @@ function json(statusCode, body, extra = {}) {
     body: JSON.stringify(body),
   };
 }
-
 function hasORStructure(rows, headerRowStart, headerRowEnd, nameCol) {
   for (let r = headerRowStart; r <= headerRowEnd; r++) {
     const row = rows[r] || [];
@@ -68,14 +58,10 @@ function hasORStructure(rows, headerRowStart, headerRowEnd, nameCol) {
   }
   return false;
 }
-
 function extractAgency(rows, agencyCode, off) {
   const result = [];
-
-  // Procurar linha da agência em off OU off+1 (estrutura pode variar por mês)
   let agRowIdx = -1;
-  let nameCol = off; // coluna onde estão os nomes
-
+  let nameCol = off;
   for (let i = 50; i < rows.length; i++) {
     if (String(rows[i][off] ?? "").trim().toUpperCase() === agencyCode) {
       agRowIdx = i;
@@ -88,18 +74,11 @@ function extractAgency(rows, agencyCode, off) {
       break;
     }
   }
-
   if (agRowIdx === -1) return result;
-
-  // Detectar estrutura O/R
   const isOR = hasORStructure(rows, Math.max(0, agRowIdx - 8), agRowIdx - 1, nameCol);
-
-  // Offsets consoante estrutura e coluna de nomes
   const fatCol  = isOR ? nameCol + 2 : nameCol + 1;
   const angCol  = isOR ? nameCol + 4 : nameCol + 2;
   const contCol = isOR ? nameCol + 8 : nameCol + 4;
-
-  // Ler consultores
   for (let i = agRowIdx + 1; i < rows.length; i++) {
     const row  = rows[i];
     const name = String(row[nameCol] ?? "").trim();
@@ -107,7 +86,6 @@ function extractAgency(rows, agencyCode, off) {
     const lower = name.toLowerCase();
     if (STOP.has(lower)) break;
     if (SKIP.has(lower)) continue;
-
     result.push({
       nome:        name,
       angariações: toInt(row[angCol]),
@@ -115,36 +93,27 @@ function extractAgency(rows, agencyCode, off) {
       faturacao:   toNum(row[fatCol]),
     });
   }
-
   return result;
 }
-
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: CORS, body: "" };
   }
-
   try {
     const res = await fetch(EXCEL_URL, { timeout: 45_000 });
     if (!res.ok) throw new Error(`Dropbox respondeu HTTP ${res.status}`);
     const buf = await res.buffer();
-
     const wb = XLSX.read(buf, { type: "buffer", cellDates: true });
-
     const ws = wb.Sheets["RC"];
     if (!ws) throw new Error('Folha "RC" não encontrada no ficheiro Excel.');
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
     const now = new Date();
     const mesParam = event.queryStringParameters?.mes;
     const mi  = mesParam ? parseInt(mesParam) - 1 : now.getMonth();
     const off = MONTH_OFFSETS[mi];
-
     const BRG = extractAgency(rows, "BRG", off);
     const BCL = extractAgency(rows, "BCL", off);
     const BGC = extractAgency(rows, "BGC", off);
-
-    // ── Folha MOTHER — últimas angariações BRG/ANG/VO ────────────────────────
     const wsMother = wb.Sheets["MOTHER"];
     const motherRows = wsMother
       ? XLSX.utils.sheet_to_json(wsMother, { header: 1, defval: "" })
@@ -165,13 +134,11 @@ exports.handler = async (event) => {
         data:       fmtDate(row[59]),
         tipo:       String(row[65] ?? "").trim(),
       }));
-
     return json(
       200,
       { mes: mi + 1, mesNome: MONTH_NAMES[mi], ano: now.getFullYear(), BRG, BCL, BGC, ultimasAngariações },
       { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" }
     );
-
   } catch (err) {
     console.error("[rc-data]", err.message);
     return json(500, { erro: err.message });
