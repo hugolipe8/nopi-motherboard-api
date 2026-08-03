@@ -1,8 +1,6 @@
 const XLSX = require('xlsx');
 const fetch = require('node-fetch');
-
-const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/y4i9m6v4q8snd2m3qljoh/Motherboard-2026.xlsx?rlkey=4px2hpxbg8p6fot2l65bkdamg&dl=1';
-
+const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/q1e1l6enrinhm8ileg903/Motherboard-2026.xlsx?rlkey=lke29p1fipcrj8l4dl3hqb8gi&st=hrc3v22k&dl=1';
 const COL = {
   PQPROC:     54,
   AGENCIA:    55,
@@ -18,15 +16,12 @@ const COL = {
   VVENDA:     67,
   COMISSAO:   68,
 };
-
 const toNum = (v) => {
   if (v == null || v === '') return null;
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 };
-
 const toStr = (v) => v != null && v !== '' ? String(v).trim() : null;
-
 const toDate = (v) => {
   if (!v) return null;
   if (v instanceof Date) return v.toISOString().split('T')[0];
@@ -38,18 +33,15 @@ const toDate = (v) => {
   }
   return String(v).split('T')[0];
 };
-
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Content-Type': 'application/json',
 };
-
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: CORS, body: '' };
   }
-
   try {
     const response = await fetch(DROPBOX_URL, { timeout: 45000 });
     const buffer = await response.arrayBuffer();
@@ -57,7 +49,6 @@ exports.handler = async (event) => {
     const sheet = workbook.Sheets['MOTHER'];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     const dataRows = rows.slice(1);
-
     // Consultores — filtrar por TIPO=REC
     const consultores = dataRows
       .filter(r => toStr(r[COL.TIPO])?.toUpperCase() === 'REC')
@@ -68,10 +59,7 @@ exports.handler = async (event) => {
         objetivoFaturacao: toNum(r[COL.COMISSAO]),
         dataEntrada:       toDate(r[COL.DATA_PREV]),
       }));
-
     // Baixas de preço e transferências — TIPO=ANG e PQPROC=B
-    // Guardar a mais recente por referência
-    // Se ENTIDADE for diferente do consultor original = transferência de angariação
     const baixasMap = {};
     dataRows
       .filter(r =>
@@ -88,13 +76,11 @@ exports.handler = async (event) => {
             precoNovo:     toNum(r[COL.VVENDA]),
             comissaoNova:  toNum(r[COL.COMISSAO]),
             data,
-            // Novo consultor/agência (pode ser transferência ou só baixa de preço)
             novoConsultor: toStr(r[COL.ENTIDADE]),
             novaAgencia:   toStr(r[COL.AGENCIA]),
           };
         }
       });
-
     // Angariações ativas — TN=VO e FASE=C
     const angariações = dataRows
       .filter(r =>
@@ -108,11 +94,8 @@ exports.handler = async (event) => {
         const comissaoOriginal  = toNum(r[COL.COMISSAO]);
         const consultorOriginal = toStr(r[COL.ENTIDADE]);
         const agenciaOriginal   = toStr(r[COL.AGENCIA]);
-
-        // Se há linha B com consultor diferente = transferência, usar novo consultor
         const consultorFinal = baixa?.novoConsultor || consultorOriginal;
         const agenciaFinal   = baixa?.novaAgencia   || agenciaOriginal;
-
         return {
           consultor:   consultorFinal,
           agencia:     agenciaFinal,
@@ -132,7 +115,6 @@ exports.handler = async (event) => {
           } : null,
         };
       });
-
     return {
       statusCode: 200,
       headers: CORS,
