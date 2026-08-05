@@ -13,7 +13,7 @@ const MONTH_NAMES   = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
-const SKIP = new Set(["brg","bcl","bgc","cg","ag","fp","cm"]);
+const SKIP = new Set(["brg","bcl","bgc","fm","ag","fp","cm"]);
 const STOP = new Set(["total geral","cessados"]);
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
