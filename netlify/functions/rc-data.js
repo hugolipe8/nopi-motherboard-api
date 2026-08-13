@@ -8,7 +8,7 @@ const EXCEL_URL = [
   "https://www.dropbox.com/scl/fi/q1e1l6enrinhm8ileg903/Motherboard-2026.xlsx",
   "?rlkey=lke29p1fipcrj8l4dl3hqb8gi&st=hrc3v22k&dl=1",
 ].join("");
-const MONTH_OFFSETS = [0, 17, 30, 42, 59, 72, 89, 95, 107, 119, 131, 143];
+const MONTH_OFFSETS = [0, 17, 30, 42, 59, 72, 89, 106, 107, 119, 131, 143];
 const MONTH_NAMES   = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
