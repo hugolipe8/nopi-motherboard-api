@@ -1,6 +1,6 @@
 const XLSX = require('xlsx');
 const fetch = require('node-fetch');
-const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/q1e1l6enrinhm8ileg903/Motherboard-2026.xlsx?rlkey=lke29p1fipcrj8l4dl3hqb8gi&st=hrc3v22k&dl=1';
+const DROPBOX_URL = 'https://www.dropbox.com/scl/fi/enjzob4mlin3k2g8o31yh/Motherboard-2026.xlsx?rlkey=w0trw0ww8wlzqha2pizk1y599&st=ybpsae9d&dl=1';
 const COL = {
   PQPROC:     54,
   AGENCIA:    55,
@@ -49,7 +49,6 @@ exports.handler = async (event) => {
     const sheet = workbook.Sheets['MOTHER'];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
     const dataRows = rows.slice(1);
-    // Consultores — filtrar por TIPO=REC
     const consultores = dataRows
       .filter(r => toStr(r[COL.TIPO])?.toUpperCase() === 'REC')
       .filter(r => toStr(r[COL.ENTIDADE]) && toStr(r[COL.ENTIDADE]) !== 'NOPI')
@@ -59,7 +58,6 @@ exports.handler = async (event) => {
         objetivoFaturacao: toNum(r[COL.COMISSAO]),
         dataEntrada:       toDate(r[COL.DATA_PREV]),
       }));
-    // Baixas de preço e transferências — TIPO=ANG e PQPROC=B
     const baixasMap = {};
     dataRows
       .filter(r =>
@@ -81,7 +79,6 @@ exports.handler = async (event) => {
           };
         }
       });
-    // Angariações ativas — TN=VO e FASE=C
     const angariações = dataRows
       .filter(r =>
         toStr(r[COL.TN])?.toUpperCase() === 'VO' &&
